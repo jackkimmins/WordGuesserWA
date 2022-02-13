@@ -1,0 +1,184 @@
+﻿@page "/"
+@inject HttpClient Http
+
+<PageTitle>Index</PageTitle>
+
+<h1>Hello, world!</h1>
+
+<section class="options">
+    <div>
+        <label for="pattern">Pattern (r**i*)</label>
+        <input type="text" id="pattern" @bind-value="@Pattern" @bind-value:event="oninput">
+    </div>
+
+    <div>
+        <label for="contains">Contains (r,o,b,i)</label>
+        <input type="text" id="contains" @bind-value="@Contains" @bind-value:event="oninput">
+    </div>
+
+    <div>
+        <label for="exclude">Exclude (a,p,q,u,f)</label>
+        <input type="text" id="exclude" @bind-value="@Exclude" @bind-value:event="oninput">
+    </div>
+
+    <button @onclick="Guess">Search</button>
+</section>
+
+<div>
+    @Output
+</div>
+
+
+@code {
+    private List<string> Words = new List<string>();
+    private string Output = "NONE";
+
+    private string _pattern = "";
+    private string _contains = "";
+    private string _exclude = "";
+
+    public string Pattern
+    {
+        get => _pattern;
+        set
+        {
+            _pattern = value.ToLower();
+            Guess();
+        }
+    }
+
+    private string Contains
+    {
+        get => _contains;
+        set
+        {
+            _contains = value.ToLower();
+            Guess();
+        }
+    }
+
+    private string Exclude
+    {
+        get => _exclude;
+        set
+        {
+            _exclude = value.ToLower();
+            Guess();
+        }
+    }
+
+    private string WildCardToRegular(string value) {
+        return "^" + System.Text.RegularExpressions.Regex.Escape(value).Replace("\\*", ".*") + "$"; 
+    }
+
+    private bool MatchPattern(string inputWord)
+    {
+        if (string.IsNullOrEmpty(_pattern))
+            return true;
+
+        if (5 != _pattern.Length)
+            return true;
+
+        //Match check for pattern in the input word
+        //* are wildcards
+
+        if (_pattern.Contains("*"))
+        {
+            bool match = System.Text.RegularExpressions.Regex.IsMatch(inputWord, WildCardToRegular(_pattern));
+
+            return match;
+        }
+        else
+        {
+            return inputWord == _pattern;
+        }
+    }
+
+    private bool DoesContain(string[] contains, string inputWord)
+    {
+        if (contains.Length == 0)
+            return true;
+
+        foreach (string c in contains)
+        {
+            if (!inputWord.Contains(c))
+                return false;
+        }
+
+        return true;
+    }
+
+    private bool DoesNotContain(string[] exclude, string inputWord)
+    {
+        if (exclude.Length == 0)
+            return true;
+
+        foreach (string c in exclude)
+        {
+            if (inputWord.Contains(c))
+                return false;
+        }
+
+        return true;
+    }
+
+    private void Shuffle(ref List<string> listToShuffle)
+    {
+        Random rng = new Random();
+        int n = listToShuffle.Count;
+
+        while (n > 1)
+        {
+            n--;
+            int k = rng.Next(n + 1);
+            string value = listToShuffle[k];
+            listToShuffle[k] = listToShuffle[n];
+            listToShuffle[n] = value;
+        }
+    }
+
+    private void Guess()
+    {
+        string[] contains = string.IsNullOrEmpty(_contains) ? new string[0] : _contains.Split(',');
+        string[] exclude = string.IsNullOrEmpty(_exclude) ? new string[0] : _exclude.Split(',');
+
+        List<string> possibleWords = new List<string>();
+
+        foreach (string w in Words)
+        {
+            bool matchPattern = MatchPattern(w);
+            bool doesContain = DoesContain(contains, w);
+            bool doesNotContain = DoesNotContain(exclude, w);
+
+            if (matchPattern && doesContain && doesNotContain)
+                possibleWords.Add(w);
+        }
+
+        if (possibleWords.Count() == 0)
+        {
+            Output = "There are no words that match your criteria.";
+        }
+        else
+        {
+            Shuffle(ref possibleWords);
+
+            if (possibleWords.Count() > 50)
+                possibleWords.RemoveRange(50, possibleWords.Count() - 50);
+
+            Output = string.Join("\n", possibleWords).ToUpper();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        string wordsFile = await Http.GetStringAsync("/words.txt");
+        Words = wordsFile.Split('\n').ToList();
+
+        for (int i = 0; i < Words.Count; i++)
+        {
+            Words[i] = Words[i].TrimEnd('\r');
+        }
+
+        Console.WriteLine(Words.Count);
+    }
+}
